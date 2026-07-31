@@ -1,0 +1,55 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '4.1.0'
+    id 'io.spring.dependency-management' version '1.1.7'
+}
+
+// Pin JUnit to the latest release. Spring Boot 4.1.0 already manages JUnit 6
+// via the junit-bom; this override repoints that BOM so Jupiter and the
+// Platform launcher stay aligned at this version. Bump as new JUnit 6.x ships.
+ext['junit-jupiter.version'] = '6.1.0'
+
+// ADAPT: Change to your project's group and artifact name
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        // ADAPT: Set to your project's Java version (17, 21, etc.)
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // ADAPT: These are the starter dependencies for a REST API.
+    // Add or replace with what your project needs:
+    //   spring-boot-starter-data-jpa  — if you need a database
+    //   spring-boot-starter-webflux   — for reactive/WebClient
+    //   spring-boot-starter-validation — for @Valid annotations
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Swagger/OpenAPI — auto-generates API docs from your controllers.
+    // Remove if your project doesn't expose a REST API.
+    // The 3.0.x line targets Spring Boot 4; the 2.x line is Spring Boot 3 only.
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
+
+    // Spring Security — uncomment when you're ready to add authentication.
+    // WARNING: this locks down ALL endpoints immediately. Every existing
+    // test will fail with 401 until you configure a SecurityFilterChain.
+    // implementation 'org.springframework.boot:spring-boot-starter-security'
+
+    // spring-boot-starter-test bundles JUnit Jupiter 6, AssertJ, Mockito and
+    // Hamcrest (all version-managed). AssertJ is declared explicitly below so
+    // it's a visible, first-class test dependency.
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.assertj:assertj-core'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
