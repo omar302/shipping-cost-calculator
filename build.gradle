@@ -16,7 +16,7 @@ version = '0.0.1-SNAPSHOT'
 java {
     toolchain {
         // ADAPT: Set to your project's Java version (17, 21, etc.)
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
@@ -46,6 +46,8 @@ dependencies {
     // Hamcrest (all version-managed). AssertJ is declared explicitly below so
     // it's a visible, first-class test dependency.
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // Boot 4: provides @WebMvcTest, @AutoConfigureMockMvc and MockMvcTester.
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     testImplementation 'org.assertj:assertj-core'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
