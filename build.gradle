@@ -46,6 +46,8 @@ dependencies {
     // Hamcrest (all version-managed). AssertJ is declared explicitly below so
     // it's a visible, first-class test dependency.
     testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    // Boot 4: provides @WebMvcTest, @AutoConfigureMockMvc and MockMvcTester.
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
     testImplementation 'org.assertj:assertj-core'
     testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
