@@ -62,3 +62,6 @@ out/
 
 ### Mac ###
 .DS_Store
+
+### Claude Code ###
+.claude/log/
