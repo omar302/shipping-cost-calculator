@@ -14,7 +14,7 @@ A starter for building Spring Boot services with a Spec-Driven Development (SDD)
 A Spring Boot REST service built and tested with Gradle.
 
 - **Build tool:** Gradle (`./gradlew`)
-- **Framework:** Spring Boot 4.1.0 (Spring Framework 7), Java 21 — see `build.gradle`
+- **Framework:** Spring Boot 4.1.0 (Spring Framework 7), Java 25 — see `build.gradle`
 - **Testing:** JUnit 6.1.0 (Jupiter) + AssertJ
 
 <!-- ADAPT: Replace this paragraph with one or two sentences describing what

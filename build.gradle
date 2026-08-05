@@ -16,7 +16,7 @@ version = '0.0.1-SNAPSHOT'
 java {
     toolchain {
         // ADAPT: Set to your project's Java version (17, 21, etc.)
-        languageVersion = JavaLanguageVersion.of(21)
+        languageVersion = JavaLanguageVersion.of(25)
     }
 }
 
