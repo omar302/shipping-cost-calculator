@@ -1,5 +1,6 @@
 package com.example.shipping.service;
 
+import com.example.shipping.model.DestinationZone;
 import com.example.shipping.model.ShippingCost;
 import com.example.shipping.model.ShippingRequest;
 import com.example.shipping.model.WeightTier;
@@ -21,21 +22,43 @@ public class ShippingCostService {
         requireSupportedPrecision(weightKg);
         requireAcceptedWeight(weightKg);
 
+        DestinationZone zone = resolveZone(request.zone());
+
+        BigDecimal weightBasedRate = weightBasedRate(weightKg);
+        BigDecimal zoneMultiplier = zone.multiplier();
+        BigDecimal zoneAdjustedRate = weightBasedRate.multiply(zoneMultiplier)
+                .setScale(2, RoundingMode.HALF_UP);
+
+        return new ShippingCost(
+                new ShippingCost.Breakdown(weightBasedRate, zoneMultiplier, zoneAdjustedRate));
+    }
+
+    private BigDecimal weightBasedRate(BigDecimal weightKg) {
         WeightTier tier = WeightTier.forWeight(weightKg);
-        BigDecimal baseRate = tier.baseRate();
+        BigDecimal rate = tier.baseRate();
 
         if (tier == WeightTier.OVER_20KG) {
             BigDecimal excessKg = weightKg.subtract(tier.lowerBoundKg());
-            baseRate = baseRate.add(excessKg.multiply(SURCHARGE_PER_KG));
+            rate = rate.add(excessKg.multiply(SURCHARGE_PER_KG));
         }
 
-        return new ShippingCost(
-                new ShippingCost.Breakdown(baseRate.setScale(2, RoundingMode.HALF_UP)));
+        return rate.setScale(2, RoundingMode.HALF_UP);
     }
 
     private void requirePresentWeight(BigDecimal weightKg) {
         if (weightKg == null) {
             throw new InvalidParcelWeightException("Parcel weight is required");
+        }
+    }
+
+    private DestinationZone resolveZone(String zone) {
+        if (zone == null) {
+            throw new InvalidDestinationZoneException("Destination zone is required");
+        }
+        try {
+            return DestinationZone.forName(zone);
+        } catch (IllegalArgumentException unrecognised) {
+            throw new InvalidDestinationZoneException(unrecognised.getMessage());
         }
     }
 

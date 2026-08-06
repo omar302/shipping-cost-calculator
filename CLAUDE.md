@@ -1,155 +1,123 @@
-# Spring Boot SDD Starter
+# Shipping Cost Calculator
 
-A starter for building Spring Boot services with a Spec-Driven Development (SDD) workflow. It ships with a `.claude/` toolchain (hooks, agents, commands) that drives a test-first workflow, enforces specs, and guards architecture boundaries.
-
-<!-- ADAPT: This file is the single most important input for Claude — it's read
-     before any work. Every section below is a working default for a standard
-     Spring Boot REST service. Edit the content to match your project; the
-     HTML comments tell you what to change in each section. A worked example
-     (a shipping cost calculator) sits at the bottom — delete it once your own
-     sections are accurate. -->
+A Spring Boot REST service that calculates shipping cost from parcel weight and destination zone. Built with a Spec-Driven Development (SDD) workflow: business rules live in `docs/specs/` and every rule is driven into existence by a failing test before any production code is written.
 
 ## Project Overview
-
-A Spring Boot REST service built and tested with Gradle.
 
 - **Build tool:** Gradle (`./gradlew`)
 - **Framework:** Spring Boot 4.1.0 (Spring Framework 7), Java 25 — see `build.gradle`
 - **Testing:** JUnit 6.1.0 (Jupiter) + AssertJ
-
-<!-- ADAPT: Replace this paragraph with one or two sentences describing what
-     your service actually does. Keep the build/framework facts in sync with
-     build.gradle. -->
+- **Persistence:** none. The calculation is pure; there is no database.
 
 ## Architecture
 
-Standard Spring Boot layered architecture. Keep it simple — controller calls service, service uses models:
+Standard Spring Boot layered architecture — controller calls service, service uses models:
 
-- **controller/** — REST endpoints. Receives requests, delegates to a service, returns responses. No business logic.
-- **service/** — All business logic and orchestration. Testable without a Spring context. Keeps HTTP and persistence concerns out.
-- **model/** — Domain objects, request/response DTOs, enums, value objects. Immutable where practical; no business logic.
-- **repository/** — Data access. Only present when the project uses a database.
+- **controller/** — `ShippingController` (the single endpoint, delegation only) and `ShippingExceptionHandler` (`@RestControllerAdvice` mapping domain exceptions to HTTP status codes). No business logic.
+- **service/** — `ShippingCostService` holds all validation and arithmetic, testable with plain JUnit and no Spring context. `InvalidParcelWeightException` and `InvalidDestinationZoneException` signal a rejected weight and a rejected zone.
+- **model/** — `ShippingRequest`, `ShippingCost` (with nested `Breakdown`), and the `WeightTier` and `DestinationZone` enums. Plain Java: no Spring, no framework imports.
 
-Layer rules: controllers never contain business logic; services never import controller-layer or web types; models hold data, not logic. The `architecture-guardian` agent enforces these boundaries.
-
-<!-- ADAPT: If you use a different style (hexagonal: ports/adapters/domain,
-     clean architecture: entities/usecases/interfaces, modular monolith,
-     microservices), replace the layers and rules above to describe it, and
-     update .claude/agents/architecture-guardian.md to match. -->
+Layer rules: controllers never contain business logic; services never import controller-layer or web types; models hold data, not logic. Per-layer detail lives in `.claude/rules/`, and the `architecture-guardian` agent enforces the boundaries.
 
 ## Processing Order
 
-When a feature applies a fixed sequence of steps, the code and the tests must follow that exact order, and the order is documented here so it can't drift.
+The calculation applies a fixed sequence. Code and tests must follow this exact order:
 
-<!-- ADAPT: List your domain's processing/calculation chains here, in order —
-     e.g. "Price: base price → discount → tax → total" or
-     "Request: validate → enrich → persist → notify". Delete this section if
-     no feature in your domain has an order-dependent chain. -->
+1. **Weight present** — a missing or null `weightKg` is rejected.
+2. **Precision** — more than two decimal places is rejected, measured *after* stripping trailing zeros (`2.5000kg` is `2.50kg` and is accepted).
+3. **Range** — the weight must be above 0kg and at most 50kg.
+4. **Zone present** — a missing or null `zone` is rejected.
+5. **Zone recognised** — the value must name one of the three zones, matched ignoring case and surrounding whitespace. No aliases.
+6. **Base rate** — the weight bracket determines the rate (brackets are lower-bound inclusive).
+7. **Surcharge** — above 20kg, add £0.50 per excess kilogram, pro-rata, then round to 2dp `HALF_UP`.
+8. **Zone multiplier** — multiply the whole weight-based rate (base *plus* surcharge) by the zone multiplier — DOMESTIC ×1.0, EUROPEAN ×1.5, INTERNATIONAL ×2.5 — then round to 2dp `HALF_UP` again. Rounding therefore happens at two stages.
+
+Validation precedes calculation, so an invalid request is never priced. All weight rules run before all zone rules: a request breaking both is rejected for the weight, and one rejection carries one explanation.
+
+That ordering is why `ShippingRequest.zone` is a raw `String` resolved inside the service, not a `DestinationZone` bound by Jackson. Resolving it during deserialization rejects an unrecognised zone before the weight is ever seen, which inverts steps 1–5 and cannot be tested below the acceptance tier. Do not reintroduce a `DestinationZone` deserializer or `@JsonCreator`.
 
 ## Monetary / Numeric Precision
 
 For money and other exact decimal values:
 
-- Use `BigDecimal` — never `double` or `float`.
+- Use `BigDecimal` — never `double` or `float`. Construct from a `String` literal.
 - Scale: 2 decimal places. Rounding: `RoundingMode.HALF_UP`.
-- Compare with `compareTo()`, not `equals()` (`BigDecimal` is scale-sensitive).
+- Compare with `compareTo()`, not `equals()` (`BigDecimal` is scale-sensitive). In tests, AssertJ's `isEqualByComparingTo`.
 - Assert exact values in tests — no floating-point tolerance.
-
-<!-- ADAPT: Adjust the scale and rounding mode to your domain's rules. Delete
-     this whole section if the project handles no exact decimal values. -->
 
 ## API Design
 
-REST conventions for this service:
-
-- Endpoints accept and return JSON (`Content-Type: application/json`).
-- Responses return a breakdown of intermediate steps where relevant, so every stage is visible and testable rather than just a final value.
-- Status codes are explicit: `200` success, `400` validation error, `401`/`403` auth, `404` not found.
+One endpoint. JSON in, JSON out.
 
 ```
-POST /api/<resource>
+POST /api/shipping/calculate
 Content-Type: application/json
 
-{ ...request fields... }
+{ "weightKg": 25.00, "zone": "EUROPEAN" }
 
 Response 200:
-{ ...response fields, including a breakdown of intermediate steps... }
+{ "breakdown": { "baseRate": 11.49, "zoneMultiplier": 1.5, "zoneAdjustedRate": 17.24 } }
 ```
 
-<!-- ADAPT: Replace the endpoint, the request/response shapes, and the status
-     codes with your real API. Include at least one concrete example request
-     and response — the worked example at the bottom of this file shows the
-     level of detail that helps. -->
+Both `weightKg` and `zone` are **required**. `baseRate` is the whole weight-based figure — bracket rate plus any over-20kg surcharge — and `zoneAdjustedRate` is that figure times the multiplier.
+
+A rejected request returns `400` as an RFC 9457 problem detail (`application/problem+json`), whose `detail` names the rule that was broken and the value that broke it:
+
+```
+Response 400:
+{ "title":  "Invalid parcel weight",
+  "status": 400,
+  "detail": "Parcel weight must be above 0kg and at most 50kg, but was 0.00kg" }
+```
+
+(`type` is also present, defaulting to `about:blank`.) A rejected zone uses the same shape, titled `"Invalid destination zone"`.
+
+Status codes are explicit: `200` success, `400` validation error. There is no auth, so `401`/`403` do not occur, and the endpoint has no not-found case.
+
+**Not yet built.** The response carries no `totalCost` and the request takes no `orderTotal`. Neither has a spec. A total cannot be computed until they exist — do not invent one.
 
 ## Testing Conventions
 
-Two tiers of tests:
+Three tiers. Prove each rule at the lowest tier that can:
 
-- **Acceptance tests** (`src/test/java/.../acceptance/`): `@SpringBootTest` + `MockMvc`. One test class per feature. Test the full HTTP request/response cycle.
-- **Service / unit tests** (`src/test/java/.../service/`): Plain JUnit 6, no Spring context. Test business logic directly.
+- **Acceptance** (`src/test/java/.../acceptance/`, `*IT`): `@SpringBootTest` + `@AutoConfigureMockMvc` with `MockMvcTester`. One class per feature, one `@Nested` class per spec rule.
+- **Service** (`src/test/java/.../service/`, `*Test`): plain JUnit, constructs the service directly. The workhorse tier — validation and arithmetic live here.
+- **Value object** (`src/test/java/.../model/`, `*Test`): plain JUnit for classification and boundaries.
 
 Conventions:
 
-- Test method names describe the business rule (`domesticOrderOver75GetsFreeShipping`), not a number (`testCalculate3`).
-- Use `@DisplayName` with plain-language, Example-Mapping-style descriptions: `"The one where a 3kg European parcel costs £7.49"`.
-- Acceptance tests verify the HTTP contract; service tests verify business logic. Don't duplicate the same assertions across both tiers.
-- Run the suite with `./gradlew test`. The `/accept` and `/tdd` workflows run it for you as part of each cycle, so you see each test go red and green yourself.
-
-<!-- ADAPT: Change the test directories, the build command, and the example
-     names if your conventions differ. Keep the two-tier structure — the
-     agents and commands assume it. -->
+- Test method names describe the business rule (`weightJustAboveZeroIsAccepted`), not a number (`testCalculate3`).
+- `@DisplayName` uses plain-language, Example-Mapping descriptions: `"The one where a 25kg parcel has a base rate of £11.49"`.
+- **Exhaustive enumeration goes at the lowest tier; the acceptance tier keeps one headline example per rule.** A comment at the acceptance test names the class holding the full table. The overlap on the headline example is intentional — it is the executable specification.
+- A rule whose examples form a table becomes one `@ParameterizedTest`, not one test per row.
+- Run the suite with `./gradlew test`. The `/accept` and `/tdd` workflows run it for you, so each red and green step stays visible.
 
 ## Spec Files
 
-Business rules live in `docs/specs/` as markdown, one file per feature (`<feature>.specs.md`). Every rule in a spec has at least one acceptance test. Use `/discover` to turn a feature idea into a spec, then `/accept` and `/tdd` to implement it.
+Business rules live in `docs/specs/` as markdown, one file per feature (`<feature>.specs.md`). Every rule has at least one test. Currently:
 
-<!-- ADAPT: Change the spec directory if it isn't docs/specs/. The
-     one-rule-one-test invariant is enforced by the spec-compliance agent —
-     keep it. -->
+- **`weight-tiers.specs.md`** — seven rules (brackets, surcharge, range, precision, missing weight, non-numeric weight, and rejection explanations). Implemented.
+- **`destination-zones.specs.md`** — six rules (multiplier, unrecognised zone, missing zone, rejection explanation, weight-before-zone ordering, and reporting the multiplier). Implemented.
+
+When behaviour is decided during implementation, the spec is updated in the same cycle. A test that traces to no rule is drift.
+
+Use `/discover` to turn a feature idea into a spec, then `/accept` and `/tdd` to implement it, and `/review` before committing.
 
 ## API Documentation (Swagger/OpenAPI)
 
-springdoc-openapi is included in `build.gradle`. When the app runs, Swagger UI is served at `/swagger-ui.html`, generated automatically from the controllers. Add `@Operation` / `@ApiResponse` annotations for richer descriptions.
-
-<!-- ADAPT: Remove this section and the springdoc dependency in build.gradle if
-     the project doesn't expose a REST API. -->
+springdoc-openapi is included in `build.gradle`. When the app runs, Swagger UI is served at `/swagger-ui.html`, generated from the controller. Add `@Operation` / `@ApiResponse` annotations for richer descriptions.
 
 ## Security
 
-Spring Security is commented out in `build.gradle` until needed. Adding it locks down all endpoints immediately — every existing test returns 401 until a `SecurityFilterChain` is configured. When you add auth, exclude Swagger UI paths if you want docs to stay public, and update existing acceptance tests to send credentials (or add a test security config that permits requests for business-logic tests).
+**Not implemented.** `spring-boot-starter-security` is commented out in `build.gradle` and every endpoint is open.
 
-<!-- ADAPT: Document your chosen mechanism (API key header, JWT, OAuth2),
-     the roles, and the rule for each (no creds → 401, wrong role → 403, etc.)
-     once you enable it. Delete this section if the service is unauthenticated. -->
+Enabling it locks down all endpoints immediately — every existing acceptance test returns 401 until a `SecurityFilterChain` is configured. When you add auth, write the spec first, exclude Swagger UI paths if docs should stay public, and update the acceptance tests to send credentials.
 
 ## The `.claude/` Toolchain
 
-The reusable part of the starter — works for any domain:
-
-- **`.claude/settings.json`** — One hook: a file guard (PreToolUse) that blocks edits to sensitive files. Tests are run by the `/accept` and `/tdd` workflows, not by hooks, so the red/green steps of the cycle stay visible.
-- **`.claude/hooks/protect-files.sh`** — Blocks edits to sensitive files via `PROTECTED_PATTERNS`.
-- **`.claude/commands/`** — `/discover` (rule → example → counter-example → edge cases → questions), `/accept` (acceptance test against the real endpoint), `/tdd` (failing test → minimum code → verify → refactor).
-- **`.claude/agents/`** — `spec-compliance` (specs have tests, precision, feature interactions, API contract) and `architecture-guardian` (layer boundaries).
-
-<!-- ADAPT: Change the test command in the /accept and /tdd workflows if you
-     don't use Gradle. Add your sensitive files to protect-files.sh. Update the domain-specific
-     content in the command and agent files. Keep the .claude/ structure, the
-     hook exit-code convention (exit 2 to block), the $ARGUMENTS placeholder in
-     commands, and docs/specs/. -->
-
----
-
-<!-- ADAPT: Everything below is the shipping cost calculator that ships with
-     this starter as a reference. It shows the level of detail that helps
-     Claude. Delete it once the sections above describe your own domain. -->
-
-## Worked Example — Shipping Cost Calculator
-
-A Spring Boot REST service that calculates shipping costs based on parcel weight, destination zone, and order value.
-
-- **Architecture:** `controller/` (REST, no logic) → `service/` (`ShippingCostService`, pure calculation, no DB) → `model/` (`ShippingRequest`, `ShippingCost`, enums `WeightTier`, `DistanceZone`).
-- **Processing order:** (1) base rate from weight tier → (2) zone multiplier (domestic ×1.0, European ×1.5, international ×2.5) → (3) free-shipping check (domestic order total ≥ £75.00 → £0.00). The order matters; every spec and test follows it.
-- **Money:** `BigDecimal`, scale 2, `RoundingMode.HALF_UP`, compare with `compareTo()`.
-- **API:** `POST /api/shipping/calculate` taking `{ weightKg, zone, orderTotal }` and returning `{ totalCost, breakdown: { baseRate, zoneMultiplier, zonedRate, freeShippingApplied } }`.
-- **Spec files:** `weight-tiers.specs.md`, `distance-zones.specs.md`, `free-shipping.specs.md`, `api-security.specs.md`.
-- **Security:** `X-API-Key` header; `USER` can calculate, `ADMIN` can also `GET /api/admin/rates`. No key → 401, invalid → 401, wrong role → 403. Swagger excluded from auth.
+- **`.claude/settings.json`** — one hook: a `PreToolUse` file guard blocking edits to sensitive files. Tests are run by the workflows, not by hooks, so red/green stays visible.
+- **`.claude/hooks/protect-files.sh`** — blocks edits to sensitive files via `PROTECTED_PATTERNS`.
+- **`.claude/skills/`** — the workflow: `/discover` (rule → example → counter-example → questions), `/accept` (one failing acceptance test for one rule), `/tdd` (one RED → GREEN → REFACTOR cycle, then stop), `/review` (read-only architecture and traceability review). Also `/claudius` and `/commit-summary`.
+- **`.claude/rules/`** — per-layer rules auto-loaded when editing that layer: `controller-rules.md`, `service-rules.md`, `model-rules.md`, `test-rules.md`.
+- **`.claude/agents/`** — `architecture-guardian` (layer boundaries), `spec-compliance` (rules have tests, precision, API contract), `mutation-analyst` (test-suite strength via PIT), `config-auditor`.
+- **`.claude/commands/`** — `quality-check.md`.

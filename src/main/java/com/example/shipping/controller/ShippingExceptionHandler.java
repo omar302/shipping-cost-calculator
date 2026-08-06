@@ -1,5 +1,6 @@
 package com.example.shipping.controller;
 
+import com.example.shipping.service.InvalidDestinationZoneException;
 import com.example.shipping.service.InvalidParcelWeightException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -16,6 +17,14 @@ public class ShippingExceptionHandler {
         ProblemDetail problem =
                 ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
         problem.setTitle("Invalid parcel weight");
+        return problem;
+    }
+
+    @ExceptionHandler(InvalidDestinationZoneException.class)
+    public ProblemDetail handleInvalidDestinationZone(InvalidDestinationZoneException exception) {
+        ProblemDetail problem =
+                ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, exception.getMessage());
+        problem.setTitle("Invalid destination zone");
         return problem;
     }
 
