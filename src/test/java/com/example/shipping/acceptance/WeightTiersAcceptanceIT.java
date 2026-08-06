@@ -25,11 +25,12 @@ class WeightTiersAcceptanceIT {
     @Autowired
     private MockMvcTester mvc;
 
-    // Every weight-tier example is a domestic example: the DOMESTIC multiplier is
-    // x1.0, so the rates below are unchanged by the destination-zones feature.
+    // Every weight-tier example is a domestic example on a £0.00 order: the DOMESTIC
+    // multiplier is x1.0 and a zero order never earns free shipping, so the rates below
+    // are unchanged by the destination-zones and free-shipping features.
     private MvcTestResult calculate(String weightKg) {
         return calculateBody("""
-                { "weightKg": %s, "zone": "DOMESTIC" }
+                { "weightKg": %s, "zone": "DOMESTIC", "orderTotal": 0.00 }
                 """.formatted(weightKg));
     }
 
@@ -166,7 +167,7 @@ class WeightTiersAcceptanceIT {
         @DisplayName("The one where a weight submitted as the string \"2.50\" is accepted at £4.99")
         void quotedNumberIsStillANumber() {
             assertThat(calculateBody("""
-                    { "weightKg": "2.50", "zone": "DOMESTIC" }
+                    { "weightKg": "2.50", "zone": "DOMESTIC", "orderTotal": 0.00 }
                     """))
                     .hasStatusOk()
                     .bodyJson().extractingPath("$.breakdown.baseRate")

@@ -25,9 +25,11 @@ class DestinationZonesAcceptanceIT {
     @Autowired
     private MockMvcTester mvc;
 
+    // Every zone example is a £0.00 order, which never earns free shipping, so the
+    // rates below are unchanged by that feature.
     private MvcTestResult calculate(String weightKg, String zone) {
         return calculateBody("""
-                { "weightKg": %s, "zone": "%s" }
+                { "weightKg": %s, "zone": "%s", "orderTotal": 0.00 }
                 """.formatted(weightKg, zone));
     }
 

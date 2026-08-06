@@ -18,8 +18,17 @@ class ShippingCostServiceTest {
         return parcel(weightKg, "DOMESTIC");
     }
 
+    // A £0.00 order is valid and never reaches the free-shipping threshold, so it keeps
+    // the weight and zone examples priced as they were before free shipping existed.
     private static ShippingRequest parcel(String weightKg, String zone) {
-        return new ShippingRequest(weightKg == null ? null : new BigDecimal(weightKg), zone);
+        return parcel(weightKg, zone, "0.00");
+    }
+
+    private static ShippingRequest parcel(String weightKg, String zone, String orderTotal) {
+        return new ShippingRequest(
+                weightKg == null ? null : new BigDecimal(weightKg),
+                zone,
+                orderTotal == null ? null : new BigDecimal(orderTotal));
     }
 
     @ParameterizedTest(name = "The one where a parcel of {0}kg has a base rate of £{1}")
@@ -52,6 +61,77 @@ class ShippingCostServiceTest {
         var cost = service.calculate(parcel(weightKg, zone));
 
         assertThat(cost.breakdown().zoneAdjustedRate()).isEqualByComparingTo(expectedRate);
+    }
+
+    // The spec's full qualification table; the acceptance tier keeps one headline row
+    // per condition. 20.00kg and £75.00 are the inclusive boundaries, 20.01kg and
+    // £74.99 the rows just past each, and the last two zones never qualify at any
+    // weight or order total.
+    @ParameterizedTest(name = "The one where a {0}kg parcel to {1} on a £{2} order costs £{3}")
+    @CsvSource({
+            "2.00,  DOMESTIC,       80.00,  0.00",
+            "20.00, DOMESTIC,       80.00,  0.00",
+            "20.01, DOMESTIC,       80.00,  9.00",
+            "2.00,  DOMESTIC,       75.00,  0.00",
+            "2.00,  DOMESTIC,       74.99,  4.99",
+            "2.00,  EUROPEAN,      100.00,  7.49",
+            "2.00,  INTERNATIONAL, 1000.00, 12.48",
+    })
+    void freeShippingIsWaivedOnlyForAQualifyingDomesticParcel(
+            String weightKg, String zone, String orderTotal, String expectedTotalCost) {
+        var cost = service.calculate(parcel(weightKg, zone, orderTotal));
+
+        assertThat(cost.totalCost()).isEqualByComparingTo(expectedTotalCost);
+    }
+
+    // The EUROPEAN row is the counter-example: the flag is reported even when free
+    // shipping was not earned, as the zone multiplier already is.
+    @ParameterizedTest(name = "The one where a 2.00kg {0} order of £{1} reports free shipping applied {2}")
+    @CsvSource({
+            "DOMESTIC,  80.00, true",
+            "EUROPEAN, 100.00, false",
+    })
+    void freeShippingAppliedIsReportedWhetherOrNotItWasEarned(
+            String zone, String orderTotal, boolean expectedFreeShippingApplied) {
+        var cost = service.calculate(parcel("2.00", zone, orderTotal));
+
+        assertThat(cost.breakdown().freeShippingApplied()).isEqualTo(expectedFreeShippingApplied);
+    }
+
+    @Test
+    @DisplayName("The one where a request carries no order total at all and is rejected as invalid")
+    void requestWithoutAnOrderTotalIsRejected() {
+        var request = parcel("2.00", "DOMESTIC", null);
+
+        assertThatThrownBy(() -> service.calculate(request))
+                .isInstanceOf(InvalidOrderTotalException.class)
+                .hasMessage("Order total is required");
+    }
+
+    @Test
+    @DisplayName("The one where an order total submitted at £75.005 is rejected as invalid")
+    void orderTotalFinerThanTwoDecimalPlacesIsRejected() {
+        var request = parcel("2.00", "DOMESTIC", "75.005");
+
+        assertThatThrownBy(() -> service.calculate(request))
+                .isInstanceOf(InvalidOrderTotalException.class);
+    }
+
+    @Test
+    @DisplayName("The one where an order total of -£1.00 is rejected as invalid")
+    void orderTotalBelowZeroIsRejected() {
+        var request = parcel("2.00", "DOMESTIC", "-1.00");
+
+        assertThatThrownBy(() -> service.calculate(request))
+                .isInstanceOf(InvalidOrderTotalException.class);
+    }
+
+    @Test
+    @DisplayName("The one where an order of £75.0000 is shipped free, trailing zeros being no finer than £75.00")
+    void orderTotalTrailingZerosAreNotFinerPrecision() {
+        var cost = service.calculate(parcel("2.00", "DOMESTIC", "75.0000"));
+
+        assertThat(cost.totalCost()).isEqualByComparingTo("0.00");
     }
 
     @Test
