@@ -8,8 +8,12 @@ import org.springframework.http.ProblemDetail;
 import tools.jackson.databind.ObjectMapper;
 
 // Refusals raised inside the security filter chain never reach ShippingExceptionHandler,
-// so they build their own problem detail. Shared by both so a refused request looks the
-// same whether it was unauthenticated or unauthorised.
+// so they build their own problem detail. Shared by both refusal paths so a refused
+// request looks the same whether it was unauthenticated or unauthorised.
+//
+// This is the filter-chain counterpart to ShippingExceptionHandler.badRequest. The two
+// deliberately stay separate — merging would couple the controller layer to the filter
+// chain — so a change to the shape here needs the same change there.
 class ProblemDetailWriter {
 
     private final ObjectMapper objectMapper;

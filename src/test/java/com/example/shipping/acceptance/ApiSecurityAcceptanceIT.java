@@ -7,27 +7,12 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
-// The keys are supplied here rather than taken from application.properties, so the
-// suite never depends on whatever keys a real deployment happens to configure.
-@SpringBootTest(properties = {
-        "shipping.api-keys.test-user-key=USER",
-        "shipping.api-keys.test-admin-key=ADMIN",
-})
-@AutoConfigureMockMvc
 @DisplayName("API Security")
-class ApiSecurityAcceptanceIT {
-
-    private static final String API_KEY_HEADER = "X-API-Key";
-    private static final String USER_KEY = "test-user-key";
-    private static final String ADMIN_KEY = "test-admin-key";
+class ApiSecurityAcceptanceIT extends AcceptanceTestSupport {
 
     // A request every shipping rule accepts, so the key is the only thing under test.
     private static final String VALID_REQUEST = """
@@ -38,9 +23,6 @@ class ApiSecurityAcceptanceIT {
     private static final String ZERO_WEIGHT_REQUEST = """
             { "weightKg": 0.00, "zone": "DOMESTIC", "orderTotal": 0.00 }
             """;
-
-    @Autowired
-    private MockMvcTester mvc;
 
     private MvcTestResult calculateWithKey(String apiKey) {
         return calculateWithKey(apiKey, VALID_REQUEST);

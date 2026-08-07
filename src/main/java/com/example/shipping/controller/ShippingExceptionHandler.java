@@ -35,6 +35,12 @@ public class ShippingExceptionHandler {
 
     // Every rejection is the same RFC 9457 shape: a 400 titled with the rule that was
     // broken, and a detail naming the value that broke it.
+    //
+    // Refusals from the security filter chain never reach a @RestControllerAdvice, so
+    // config/ProblemDetailWriter builds the same shape for those. The two cannot be
+    // merged — one returns a value for Spring to serialise, the other writes to the
+    // response itself, and merging them would couple this layer to the filter chain —
+    // so a change to the shape here needs the same change there.
     private ProblemDetail badRequest(String title, String detail) {
         ProblemDetail problem = ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, detail);
         problem.setTitle(title);

@@ -9,24 +9,12 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
-import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
-// Secured by api-security.specs.md: every request needs a configured key. The key
-// is supplied here rather than taken from application.properties, so the suite
-// never depends on whatever a real deployment configures.
-@SpringBootTest(properties = "shipping.api-keys.test-user-key=USER")
-@AutoConfigureMockMvc
 @DisplayName("Destination Zones")
-class DestinationZonesAcceptanceIT {
-
-    @Autowired
-    private MockMvcTester mvc;
+class DestinationZonesAcceptanceIT extends AcceptanceTestSupport {
 
     // Every zone example is a £0.00 order, which never earns free shipping, so the
     // rates below are unchanged by that feature.
@@ -38,7 +26,7 @@ class DestinationZonesAcceptanceIT {
 
     private MvcTestResult calculateBody(String json) {
         return mvc.post().uri("/api/shipping/calculate")
-                .header("X-API-Key", "test-user-key")
+                .header(API_KEY_HEADER, USER_KEY)
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json)
                 .exchange();
