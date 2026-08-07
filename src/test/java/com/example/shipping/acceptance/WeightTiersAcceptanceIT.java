@@ -17,7 +17,10 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.assertj.MockMvcTester;
 import org.springframework.test.web.servlet.assertj.MvcTestResult;
 
-@SpringBootTest
+// Secured by api-security.specs.md: every request needs a configured key. The key
+// is supplied here rather than taken from application.properties, so the suite
+// never depends on whatever a real deployment configures.
+@SpringBootTest(properties = "shipping.api-keys.test-user-key=USER")
 @AutoConfigureMockMvc
 @DisplayName("Weight Tiers")
 class WeightTiersAcceptanceIT {
@@ -36,6 +39,7 @@ class WeightTiersAcceptanceIT {
 
     private MvcTestResult calculateBody(String json) {
         return mvc.post().uri("/api/shipping/calculate")
+                .header("X-API-Key", "test-user-key")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(json)
                 .exchange();

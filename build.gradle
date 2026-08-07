@@ -37,10 +37,8 @@ dependencies {
     // The 3.0.x line targets Spring Boot 4; the 2.x line is Spring Boot 3 only.
     implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.0.3'
 
-    // Spring Security — uncomment when you're ready to add authentication.
-    // WARNING: this locks down ALL endpoints immediately. Every existing
-    // test will fail with 401 until you configure a SecurityFilterChain.
-    // implementation 'org.springframework.boot:spring-boot-starter-security'
+    // Spring Security — API key authentication, see api-security.specs.md.
+    implementation 'org.springframework.boot:spring-boot-starter-security'
 
     // spring-boot-starter-test bundles JUnit Jupiter 6, AssertJ, Mockito and
     // Hamcrest (all version-managed). AssertJ is declared explicitly below so

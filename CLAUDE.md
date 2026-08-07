@@ -16,12 +16,15 @@ Standard Spring Boot layered architecture — controller calls service, service 
 - **controller/** — `ShippingController` (the single endpoint, delegation only) and `ShippingExceptionHandler` (`@RestControllerAdvice` mapping domain exceptions to HTTP status codes). No business logic.
 - **service/** — `ShippingCostService` holds all validation and arithmetic, testable with plain JUnit and no Spring context. `InvalidParcelWeightException`, `InvalidDestinationZoneException` and `InvalidOrderTotalException` signal a rejected weight, zone and order total.
 - **model/** — `ShippingRequest`, `ShippingCost` (with nested `Breakdown`), and the `WeightTier` and `DestinationZone` enums. Plain Java: no Spring, no framework imports.
+- **config/** — the security filter chain and its collaborators: `SecurityConfig`, `ApiKeyProperties`, the `Role` enum, `ApiKeyAuthenticationFilter`, and the two refusal writers. Infrastructure, not domain — no business rules live here.
 
 Layer rules: controllers never contain business logic; services never import controller-layer or web types; models hold data, not logic. Per-layer detail lives in `.claude/rules/`, and the `architecture-guardian` agent enforces the boundaries.
 
 ## Processing Order
 
-The calculation applies a fixed sequence. Code and tests must follow this exact order:
+Authentication and authorisation run first, in the security filter chain, before any of the steps below. A refused request is never parsed or priced, so an unauthenticated caller learns nothing about their payload. That ordering is structural — the filter chain runs before `DispatcherServlet` — not something the steps below enforce.
+
+The calculation then applies a fixed sequence. Code and tests must follow this exact order:
 
 1. **Weight present** — a missing or null `weightKg` is rejected.
 2. **Weight precision** — more than two decimal places is rejected, measured *after* stripping trailing zeros (`2.5000kg` is `2.50kg` and is accepted).
@@ -58,6 +61,7 @@ One endpoint. JSON in, JSON out.
 ```
 POST /api/shipping/calculate
 Content-Type: application/json
+X-API-Key: <a configured key>
 
 { "weightKg": 25.00, "zone": "EUROPEAN", "orderTotal": 100.00 }
 
@@ -84,7 +88,11 @@ Response 400:
 
 A value the body reader cannot parse must name the field it came from — the request has two numeric fields, so `ShippingExceptionHandler` resolves the field from the Jackson path rather than blaming a fixed one. Anything it cannot attribute keeps the generic `"Request body could not be read"`.
 
-Status codes are explicit: `200` success, `400` validation error. There is no auth, so `401`/`403` do not occur, and the endpoint has no not-found case.
+Status codes are explicit: `200` success, `400` validation error, `401` no or unrecognised key, `403` key not permitted here. The endpoint has no not-found case.
+
+`GET /api/admin/rates` exists as an **authorisation boundary only** — ADMIN reaches it, USER gets 403 — and returns no body. Its content needs its own spec; do not invent a rates response shape.
+
+**One deliberate exception to the contract above.** A refused *key* is never named in the `detail`, unlike every other rejection, which echoes the value that broke the rule. A rejected key is usually a real credential, and echoing it writes it into responses, proxy logs and error trackers. The three refusal explanations are fixed: "API key is required", "API key is not recognised", "API key is not permitted to use this endpoint".
 
 ## Testing Conventions
 
@@ -109,6 +117,7 @@ Business rules live in `docs/specs/` as markdown, one file per feature (`<featur
 - **`weight-tiers.specs.md`** — seven rules (brackets, surcharge, range, precision, missing weight, non-numeric weight, and rejection explanations). Implemented.
 - **`destination-zones.specs.md`** — six rules (multiplier, unrecognised zone, missing zone, rejection explanation, weight-before-zone ordering, and reporting the multiplier). Implemented.
 - **`free-shipping.specs.md`** — seven rules (qualifying conditions, reporting the total and the flag, missing order total, invalid amount, non-numeric order total, rejection explanation, and weight-and-zone-before-order-total ordering). Implemented.
+- **`api-security.specs.md`** — six rules (unrecognised key, role-based access, unrecognised role at startup, public documentation, security before any shipping rule, and refusal explanations). Implemented.
 
 When behaviour is decided during implementation, the spec is updated in the same cycle. A test that traces to no rule is drift.
 
@@ -116,13 +125,29 @@ Use `/discover` to turn a feature idea into a spec, then `/accept` and `/tdd` to
 
 ## API Documentation (Swagger/OpenAPI)
 
-springdoc-openapi is included in `build.gradle`. When the app runs, Swagger UI is served at `/swagger-ui.html`, generated from the controller. Add `@Operation` / `@ApiResponse` annotations for richer descriptions.
+springdoc-openapi is included in `build.gradle`. When the app runs, Swagger UI is served at `/swagger-ui.html`, generated from the controllers, and is reachable **without a key** along with the `/v3/api-docs` document behind it. Add `@Operation` / `@ApiResponse` annotations for richer descriptions.
+
+`OpenApiConfig` declares the `apiKey` security scheme and requires it globally, so the document tells an integrator a key is needed and which header carries it. That is the point of keeping the docs public — reading them before being issued a key only helps if they state the requirement.
 
 ## Security
 
-**Not implemented.** `spring-boot-starter-security` is commented out in `build.gradle` and every endpoint is open.
+API key authentication, per `api-security.specs.md`. Every endpoint except the documentation needs an `X-API-Key` header naming a configured key.
 
-Enabling it locks down all endpoints immediately — every existing acceptance test returns 401 until a `SecurityFilterChain` is configured. When you add auth, write the spec first, exclude Swagger UI paths if docs should stay public, and update the acceptance tests to send credentials.
+Keys are a key → role map, so several keys can share a role and one can be rotated or revoked without affecting the others:
+
+```properties
+shipping.api-keys.7f3a91c4=USER
+shipping.api-keys.e91c7a2b=ADMIN
+```
+
+**No keys are committed**, so a freshly cloned app refuses every request with 401 until some are configured. That is the intended default, not a fault to debug.
+
+- **Roles:** `USER` and `ADMIN` only, bound to the `Role` enum. An unrecognised role fails at **startup** rather than at the first request that needed it — a key carrying a junk role would otherwise still authenticate, silently keeping catch-all access while losing the access it was meant to have. Do not widen this back to a `String`.
+- **Public paths:** Swagger UI and the OpenAPI document it fetches. The UI cannot render without the document, so opening one without the other achieves nothing.
+- **401 vs 403** is decided by which path a request takes, not by branching: an unauthenticated caller reaches `ApiKeyAuthenticationEntryPoint`, an authenticated-but-forbidden one reaches `ApiKeyAccessDeniedHandler`.
+- **Refusals never echo the key.** This is the one deliberate exception to the rejection contract below — see API Design.
+
+Tests supply their own keys via `@SpringBootTest(properties = "shipping.api-keys.test-user-key=USER")` rather than relying on `application.properties`, so the suite never depends on what a deployment configures.
 
 ## The `.claude/` Toolchain
 
