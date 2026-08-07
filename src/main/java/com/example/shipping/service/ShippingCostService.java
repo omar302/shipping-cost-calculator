@@ -6,6 +6,8 @@ import com.example.shipping.model.ShippingRequest;
 import com.example.shipping.model.WeightTier;
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.util.EnumSet;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -20,7 +22,12 @@ public class ShippingCostService {
     // 2dp money invariant. Merging them would let a change to one silently move the other.
     private static final int MAX_ORDER_TOTAL_DECIMAL_PLACES = 2;
     private static final BigDecimal MIN_ORDER_TOTAL = new BigDecimal("0.00");
-    private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("75.00");
+    private static final BigDecimal FREE_SHIPPING_THRESHOLD = new BigDecimal("50.00");
+    // Domestic and European qualify on identical terms; international never does.
+    // Which zones qualify is a membership question, not a threshold — adding one is
+    // an edit here rather than a new comparison.
+    private static final Set<DestinationZone> FREE_SHIPPING_ZONES =
+            EnumSet.of(DestinationZone.DOMESTIC, DestinationZone.EUROPEAN);
     // The cap is the surcharge boundary, so free shipping never applies to a parcel
     // charged a surcharge. Taken from the tier rather than restated, so the two cannot
     // drift apart. Note a 20.00kg parcel is already in OVER_20KG with a zero surcharge,
@@ -60,8 +67,8 @@ public class ShippingCostService {
     }
 
     private void requireSupportedOrderTotalPrecision(BigDecimal orderTotal) {
-        // As with parcel weight, trailing zeros are not finer precision: £75.0000 is
-        // £75.00, and still reaches the threshold.
+        // As with parcel weight, trailing zeros are not finer precision: £50.0000 is
+        // £50.00, and still reaches the threshold.
         if (orderTotal.stripTrailingZeros().scale() > MAX_ORDER_TOTAL_DECIMAL_PLACES) {
             throw new InvalidOrderTotalException(
                     "Order total must be given to at most %d decimal places, but was £%s"
@@ -81,7 +88,7 @@ public class ShippingCostService {
 
     private boolean qualifiesForFreeShipping(
             BigDecimal weightKg, DestinationZone zone, BigDecimal orderTotal) {
-        return zone == DestinationZone.DOMESTIC
+        return FREE_SHIPPING_ZONES.contains(zone)
                 && weightKg.compareTo(FREE_SHIPPING_WEIGHT_CAP_KG) <= 0
                 && orderTotal.compareTo(FREE_SHIPPING_THRESHOLD) >= 0;
     }

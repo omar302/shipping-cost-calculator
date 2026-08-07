@@ -64,32 +64,32 @@ class ShippingCostServiceTest {
     }
 
     // The spec's full qualification table; the acceptance tier keeps one headline row
-    // per condition. 20.00kg and £75.00 are the inclusive boundaries, 20.01kg and
-    // £74.99 the rows just past each, and the last two zones never qualify at any
-    // weight or order total.
+    // per outcome. 20.00kg and £50.00 are the inclusive boundaries, 20.01kg and £49.99
+    // the rows just past each.
     @ParameterizedTest(name = "The one where a {0}kg parcel to {1} on a £{2} order costs £{3}")
     @CsvSource({
-            "2.00,  DOMESTIC,       80.00,  0.00",
-            "20.00, DOMESTIC,       80.00,  0.00",
-            "20.01, DOMESTIC,       80.00,  9.00",
-            "2.00,  DOMESTIC,       75.00,  0.00",
-            "2.00,  DOMESTIC,       74.99,  4.99",
-            "2.00,  EUROPEAN,      100.00,  7.49",
+            "2.00,  DOMESTIC,       60.00,  0.00",
+            "2.00,  EUROPEAN,       60.00,  0.00",
+            "20.00, DOMESTIC,       60.00,  0.00",
+            "20.01, DOMESTIC,       60.00,  9.00",
+            "2.00,  DOMESTIC,       50.00,  0.00",
+            "2.00,  DOMESTIC,       49.99,  4.99",
+            "2.00,  EUROPEAN,       49.99,  7.49",
             "2.00,  INTERNATIONAL, 1000.00, 12.48",
     })
-    void freeShippingIsWaivedOnlyForAQualifyingDomesticParcel(
+    void freeShippingIsWaivedOnlyForAQualifyingParcel(
             String weightKg, String zone, String orderTotal, String expectedTotalCost) {
         var cost = service.calculate(parcel(weightKg, zone, orderTotal));
 
         assertThat(cost.totalCost()).isEqualByComparingTo(expectedTotalCost);
     }
 
-    // The EUROPEAN row is the counter-example: the flag is reported even when free
+    // The INTERNATIONAL row is the counter-example: the flag is reported even when free
     // shipping was not earned, as the zone multiplier already is.
     @ParameterizedTest(name = "The one where a 2.00kg {0} order of £{1} reports free shipping applied {2}")
     @CsvSource({
-            "DOMESTIC,  80.00, true",
-            "EUROPEAN, 100.00, false",
+            "DOMESTIC,       60.00, true",
+            "INTERNATIONAL, 100.00, false",
     })
     void freeShippingAppliedIsReportedWhetherOrNotItWasEarned(
             String zone, String orderTotal, boolean expectedFreeShippingApplied) {
@@ -127,9 +127,9 @@ class ShippingCostServiceTest {
     }
 
     @Test
-    @DisplayName("The one where an order of £75.0000 is shipped free, trailing zeros being no finer than £75.00")
+    @DisplayName("The one where an order of £50.0000 is shipped free, trailing zeros being no finer than £50.00")
     void orderTotalTrailingZerosAreNotFinerPrecision() {
-        var cost = service.calculate(parcel("2.00", "DOMESTIC", "75.0000"));
+        var cost = service.calculate(parcel("2.00", "DOMESTIC", "50.0000"));
 
         assertThat(cost.totalCost()).isEqualByComparingTo("0.00");
     }

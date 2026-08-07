@@ -31,19 +31,21 @@ class FreeShippingAcceptanceIT extends AcceptanceTestSupport {
     }
 
     @Nested
-    @DisplayName("The shipping cost is waived only for a domestic parcel of at most 20.00kg whose order total reaches £75.00")
+    @DisplayName("The shipping cost is waived only for a domestic or European parcel of at most 20.00kg whose order total reaches £50.00")
     class QualifyingForFreeShipping {
 
-        // One headline row per condition the rule turns on — earned, refused on weight,
-        // refused on zone. The full table, including both inclusive boundaries and the
-        // rows just past them, is enumerated in ShippingCostServiceTest.
+        // One headline row per outcome the rule turns on — earned at home, earned in
+        // Europe, refused on weight, refused on zone. The full table, including both
+        // inclusive boundaries and the rows just past them, is enumerated in
+        // ShippingCostServiceTest.
         @ParameterizedTest(name = "The one where a {0}kg parcel to {1} on a £{2} order costs £{3}")
         @CsvSource({
-                "2.00,  DOMESTIC, 80.00,  0.00",
-                "20.01, DOMESTIC, 80.00,  9.00",
-                "2.00,  EUROPEAN, 100.00, 7.49",
+                "2.00,  DOMESTIC,       60.00,  0.00",
+                "2.00,  EUROPEAN,       60.00,  0.00",
+                "20.01, DOMESTIC,       60.00,  9.00",
+                "2.00,  INTERNATIONAL, 1000.00, 12.48",
         })
-        void freeShippingIsWaivedOnlyForAQualifyingDomesticParcel(
+        void freeShippingIsWaivedOnlyForAQualifyingParcel(
                 String weightKg, String zone, String orderTotal, String expectedTotalCost) {
             assertThat(calculate(weightKg, zone, orderTotal))
                     .hasStatusOk()
@@ -57,13 +59,13 @@ class FreeShippingAcceptanceIT extends AcceptanceTestSupport {
     @DisplayName("The total cost the customer pays and whether free shipping was applied are both reported")
     class ReportedTotalAndFlag {
 
-        // Both rows are a 2.00kg parcel. The EUROPEAN row is the counter-example: the
-        // flag is reported even when it changes nothing. In both, the zone-adjusted
+        // Both rows are a 2.00kg parcel. The INTERNATIONAL row is the counter-example:
+        // the flag is reported even when it changes nothing. In both, the zone-adjusted
         // rate is what the breakdown still shows — waived, it is not zeroed.
         @ParameterizedTest(name = "The one where a 2.00kg {0} order of £{1} pays £{2}, free shipping applied {3}")
         @CsvSource({
-                "DOMESTIC,  80.00, 0.00, true,  4.99",
-                "EUROPEAN, 100.00, 7.49, false, 7.49",
+                "DOMESTIC,       60.00, 0.00, true,   4.99",
+                "INTERNATIONAL, 100.00, 12.48, false, 12.48",
         })
         void totalCostAndFreeShippingFlagAreReportedAlongsideTheWaivedRate(
                 String zone, String orderTotal, String expectedTotalCost,
@@ -109,15 +111,15 @@ class FreeShippingAcceptanceIT extends AcceptanceTestSupport {
     class InvalidOrderTotal {
 
         // All rows are a 2.00kg domestic parcel costing £4.99, so the total shows
-        // whether the order qualified. The £75.0000 row is the point of the rule:
-        // trailing zeros are not finer precision, so it is the same as £75.00 and
+        // whether the order qualified. The £50.0000 row is the point of the rule:
+        // trailing zeros are not finer precision, so it is the same as £50.00 and
         // still earns free shipping. £0.00 is the boundary of the accepted range —
         // valid, and never qualifying.
         @ParameterizedTest(name = "The one where an order total of £{0} is accepted and pays £{1}")
         @CsvSource({
-                "80.00,    0.00",
+                "60.00,    0.00",
                 "0.00,     4.99",
-                "75.0000,  0.00",
+                "50.0000,  0.00",
         })
         void orderTotalWithinTheAcceptedRangeIsPriced(String orderTotal, String expectedTotalCost) {
             assertThat(calculate("2.00", "DOMESTIC", orderTotal))

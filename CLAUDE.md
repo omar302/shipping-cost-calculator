@@ -1,6 +1,6 @@
 # Shipping Cost Calculator
 
-A Spring Boot REST service that calculates shipping cost from parcel weight, destination zone and order total, waiving it entirely for qualifying domestic orders. Built with a Spec-Driven Development (SDD) workflow: business rules live in `docs/specs/` and every rule is driven into existence by a failing test before any production code is written.
+A Spring Boot REST service that calculates shipping cost from parcel weight, destination zone and order total, waiving it entirely for qualifying domestic and European orders. Built with a Spec-Driven Development (SDD) workflow: business rules live in `docs/specs/` and every rule is driven into existence by a failing test before any production code is written.
 
 ## Project Overview
 
@@ -32,12 +32,12 @@ The calculation then applies a fixed sequence. Code and tests must follow this e
 4. **Zone present** — a missing or null `zone` is rejected.
 5. **Zone recognised** — the value must name one of the three zones, matched ignoring case and surrounding whitespace. No aliases.
 6. **Order total present** — a missing or null `orderTotal` is rejected.
-7. **Order total precision** — more than two decimal places is rejected, again measured *after* stripping trailing zeros (`£75.0000` is `£75.00` and is accepted).
+7. **Order total precision** — more than two decimal places is rejected, again measured *after* stripping trailing zeros (`£50.0000` is `£50.00` and is accepted).
 8. **Order total range** — £0.00 or above. Unlike weight, **zero is valid** — it simply never qualifies — and there is no upper bound.
 9. **Base rate** — the weight bracket determines the rate (brackets are lower-bound inclusive).
 10. **Surcharge** — above 20kg, add £0.50 per excess kilogram, pro-rata, then round to 2dp `HALF_UP`.
 11. **Zone multiplier** — multiply the whole weight-based rate (base *plus* surcharge) by the zone multiplier — DOMESTIC ×1.0, EUROPEAN ×1.5, INTERNATIONAL ×2.5 — then round to 2dp `HALF_UP` again. Rounding therefore happens at two stages.
-12. **Free shipping** — a DOMESTIC parcel of at most 20.00kg on an order of £75.00 or more costs £0.00. Both thresholds are inclusive; all three conditions must hold.
+12. **Free shipping** — a DOMESTIC or EUROPEAN parcel of at most 20.00kg on an order of £50.00 or more costs £0.00. Both thresholds are inclusive; all three conditions must hold. Which zones qualify is a membership set (`FREE_SHIPPING_ZONES`), not a comparison — INTERNATIONAL never qualifies at any order total or weight.
 
 Validation precedes calculation, so an invalid request is never priced. The field groups run in order — all weight rules, then all zone rules, then all order-total rules — so a request breaking several is rejected for the earliest, and one rejection carries one explanation.
 
